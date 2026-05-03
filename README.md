@@ -1,4 +1,7 @@
+
 # ISO TESTIT! — Week 3 Prototype
+
+**Live Demo:** [https://prototype-livid-ten.vercel.app](https://prototype-livid-ten.vercel.app)
 
 **Course:** SENG 436 — Software Quality Assurance
 **Team:** Import Math (Zeynep Nur Karabay, Mert Bursalıoğlu, Yusuf Ali Mertyürek)
@@ -58,3 +61,5 @@ After playing the game, participants will be able to:
 3. Distinguish **Static testing** from **Dynamic testing**.
 4. Map a 29119-1 testing event to the affected **ISO/IEC 25010** quality characteristic.
 5. **Justify** a classification decision with a correct conceptual reason — not just a label.
+
+
