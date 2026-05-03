@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISO TESTIT! — Learn ISO/IEC 29119-1 by playing</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Persistent rules toggle (visible everywhere) -->
+  <button id="rules-toggle" class="rules-toggle" type="button" aria-label="Toggle rules panel">
+    <span aria-hidden="true">?</span> Rules
+  </button>
+
+  <!-- Rules side panel -->
+  <aside id="rules-panel" class="rules-panel" aria-hidden="true">
+    <div class="rules-panel-inner">
+      <header class="rules-header">
+        <h2>How to play</h2>
+        <button id="rules-close" class="rules-close" type="button" aria-label="Close rules">×</button>
+      </header>
+      <div class="rules-body" id="rules-body"><!-- filled by JS --></div>
+    </div>
+  </aside>
+
+  <!-- Main app root -->
+  <main id="app" class="app">
+    <!-- Screens are swapped in/out by JS; only one is visible at a time -->
+
+    <!-- LOBBY -->
+    <section id="screen-lobby" class="screen screen-lobby" aria-hidden="false">
+      <div class="lobby-card">
+        <h1 class="logo">
+          ISO <span class="logo-accent">TESTIT!</span>
+        </h1>
+        <p class="tagline">Kahoot meets Uno — ISO/IEC 29119-1 General Concepts</p>
+
+        <label class="lobby-label" for="player-name">Your name</label>
+        <input id="player-name" class="lobby-input" type="text" maxlength="20" placeholder="QA Engineer" autocomplete="off" />
+
+        <div class="lobby-meta">
+          <div><strong>9 rounds</strong> · ~10 minutes</div>
+          <div>Single-player vs <strong>AI Auditor</strong></div>
+        </div>
+
+        <button id="start-game" class="btn btn-primary" type="button">Start Game</button>
+
+        <div class="lobby-hint">
+          New here? <button id="open-rules-from-lobby" class="link-btn" type="button">Read the rules</button> first.
+        </div>
+      </div>
+    </section>
+
+    <!-- ROUND -->
+    <section id="screen-round" class="screen screen-round" aria-hidden="true">
+      <header class="round-header">
+        <div class="player-strip" id="strip-opponent">
+          <div class="player-avatar opponent-avatar">AI</div>
+          <div class="player-info">
+            <div class="player-name">AI Auditor</div>
+            <div class="player-score"><span id="opponent-score">0</span> pts</div>
+          </div>
+        </div>
+
+        <div class="round-meta">
+          <div class="round-counter">Round <span id="round-counter">1</span> / 9</div>
+          <div class="round-type" id="round-type-label">Standard</div>
+        </div>
+
+        <div class="player-strip player-strip-self" id="strip-player">
+          <div class="player-info player-info-right">
+            <div class="player-name" id="player-name-display">You</div>
+            <div class="player-score"><span id="player-score">0</span> pts</div>
+          </div>
+          <div class="player-avatar self-avatar">YOU</div>
+        </div>
+      </header>
+
+      <div class="round-body">
+        <!-- Scenario -->
+        <div class="scenario-wrap">
+          <div class="scenario-card" id="scenario-card">
+            <div class="scenario-tag">SCENARIO</div>
+            <p class="scenario-text" id="scenario-text">…</p>
+            <div class="scenario-clause" id="scenario-clause"></div>
+          </div>
+
+          <!-- Timer ring -->
+          <div class="timer-wrap">
+            <svg class="timer-ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="timer-track" cx="60" cy="60" r="52" />
+              <circle id="timer-fill" class="timer-fill" cx="60" cy="60" r="52" />
+            </svg>
+            <div class="timer-text" id="timer-text">--</div>
+          </div>
+        </div>
+
+        <!-- Phase indicator -->
+        <div class="phase-indicator">
+          <span class="phase-dot phase-dot-active" id="phase-dot-match">1 · MATCH</span>
+          <span class="phase-dot" id="phase-dot-defend">2 · DEFEND</span>
+          <span class="phase-dot" id="phase-dot-resolve">3 · RESOLVE</span>
+        </div>
+
+        <!-- Defend panel (hidden during Match) -->
+        <div class="defend-panel" id="defend-panel" hidden>
+          <div class="defend-section">
+            <h3 class="defend-heading">Why did you play that card?</h3>
+            <div class="defend-chips" id="rationale-chips"></div>
+          </div>
+          <div class="defend-section">
+            <h3 class="defend-heading">Which ISO/IEC 25010 quality characteristic does this scenario most affect?</h3>
+            <div class="defend-chips quality-chips" id="quality-chips"></div>
+          </div>
+          <button id="defend-submit" class="btn btn-primary" type="button" disabled>Lock in defence</button>
+        </div>
+
+        <!-- Resolve overlay (hidden until Resolve phase) -->
+        <div class="resolve-overlay" id="resolve-overlay" hidden>
+          <div class="resolve-card" id="resolve-card"></div>
+        </div>
+
+        <!-- Player hand -->
+        <div class="hand-wrap">
+          <div class="hand-label">Your hand · play one card</div>
+          <div class="hand" id="hand"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- END -->
+    <section id="screen-end" class="screen screen-end" aria-hidden="true">
+      <div class="end-card">
+        <div class="trophy" aria-hidden="true">🏆</div>
+        <h2 id="end-banner" class="end-banner">Result</h2>
+        <p class="end-subline" id="end-subline"></p>
+
+        <div class="end-scores">
+          <div class="end-score-row">
+            <span>You</span>
+            <strong id="end-score-player">0 pts</strong>
+          </div>
+          <div class="end-score-row">
+            <span>AI Auditor</span>
+            <strong id="end-score-opponent">0 pts</strong>
+          </div>
+        </div>
+
+        <h3 class="end-review-heading">Round-by-round review</h3>
+        <div class="end-review" id="end-review"></div>
+
+        <button id="play-again" class="btn btn-primary" type="button">Play again</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Data first (sets window.GAME_DATA), then game logic -->
+  <script src="data.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
