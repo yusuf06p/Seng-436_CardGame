@@ -29,24 +29,49 @@
 
     <!-- LOBBY -->
     <section id="screen-lobby" class="screen screen-lobby" aria-hidden="false">
-      <div class="lobby-card">
-        <h1 class="logo">
-          ISO <span class="logo-accent">TESTIT!</span>
-        </h1>
-        <p class="tagline">Kahoot meets Uno — ISO/IEC 29119-1 General Concepts</p>
-
-        <label class="lobby-label" for="player-name">Your name</label>
-        <input id="player-name" class="lobby-input" type="text" maxlength="20" placeholder="QA Engineer" autocomplete="off" />
-
-        <div class="lobby-meta">
-          <div><strong>15 rounds</strong> · ~15 minutes</div>
-          <div>Single-player vs <strong>AI Auditor</strong></div>
+      <div class="lobby-hero">
+        <div class="floating-cards">
+          <div class="hero-card hc-red">
+            <div class="hc-icon">🐞</div>
+            <div class="hc-title">ERROR</div>
+            <div class="hc-lines">
+              <div class="hc-line"></div>
+              <div class="hc-line w-70"></div>
+              <div class="hc-line"></div>
+              <div class="hc-line w-40"></div>
+            </div>
+          </div>
+          <div class="hero-card hc-blue">
+            <div class="hc-icon">⚙️</div>
+            <div class="hc-title">FAILURE</div>
+            <div class="hc-lines">
+              <div class="hc-line"></div>
+              <div class="hc-line w-70"></div>
+              <div class="hc-line"></div>
+              <div class="hc-line w-40"></div>
+            </div>
+          </div>
+          <div class="hero-card hc-orange">
+            <div class="hc-icon">📱</div>
+            <div class="hc-title">DEFECT</div>
+            <div class="hc-lines">
+              <div class="hc-line"></div>
+              <div class="hc-line w-70"></div>
+              <div class="hc-line"></div>
+              <div class="hc-line w-40"></div>
+            </div>
+          </div>
         </div>
 
-        <button id="start-game" class="btn btn-primary" type="button">Start Game</button>
+        <h1 class="logo-new">ISO TESTIT!</h1>
+        <p class="tagline-new">The Ultimate Quality Assurance Card Game</p>
 
-        <div class="lobby-hint">
-          New here? <button id="open-rules-from-lobby" class="link-btn" type="button">Read the rules</button> first.
+        <div class="lobby-controls">
+          <input id="player-name" class="lobby-input-new" type="text" maxlength="20" placeholder="İsminizi girin (Opsiyonel)" autocomplete="off" />
+          <div class="lobby-buttons">
+            <button id="start-game" class="btn-new btn-start" type="button">OYUNA BAŞLA</button>
+            <button id="open-rules-from-lobby" class="btn-new btn-rules" type="button">NASIL OYNANIR?</button>
+          </div>
         </div>
       </div>
     </section>
