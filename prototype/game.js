@@ -44,8 +44,9 @@
       rationaleChips: $("rationale-chips"),
       qualityChips:   $("quality-chips"),
       defendSubmit:   $("defend-submit"),
-      resolveOverlay: $("resolve-overlay"),
-      resolveCard:    $("resolve-card"),
+      resolveOverlay:   $("resolve-overlay"),
+      resolveCard:      $("resolve-card"),
+      lightningNotice:  $("lightning-notice"),
       phaseDots: {
         match:   $("phase-dot-match"),
         defend:  $("phase-dot-defend"),
@@ -240,6 +241,8 @@
     dom.round.timerFill.classList.remove("is-warning");
     setPhaseDot("match");
 
+    dom.round.lightningNotice.hidden = (t !== "lightning");
+
     renderHand({ disabled: true });
     updateScores();
 
@@ -250,6 +253,7 @@
   function enterMatch() {
     state.phase = "match";
     setPhaseDot("match");
+    dom.round.lightningNotice.hidden = true;
     renderHand({ disabled: false });
 
     const ms = state.currentRoundPlan.matchSec * 1000;
@@ -267,6 +271,7 @@
   }
 
   function advanceFromMatch() {
+    if (state.phase !== "match") return;
     clearTimers();
     if (state.currentRoundPlan.type === "lightning") {
       enterResolve();
@@ -337,7 +342,14 @@
     updateScores();
 
     dom.round.resolveOverlay.hidden = false;
-    state.resolveHandle = setTimeout(advanceFromResolve, state.currentRoundPlan.resolveSec * 1000);
+
+    const continueBtn = document.getElementById("resolve-continue");
+    if (continueBtn) {
+      continueBtn.onclick = () => {
+        clearTimers();
+        advanceFromResolve();
+      };
+    }
   }
 
   function advanceFromResolve() {
@@ -613,6 +625,9 @@
         <span class="pts-self">+${result.playerPoints} pts</span>
         <span class="pts-opponent">AI: +${result.opponentPoints} (played ${escapeHtml(opponentCardName)})</span>
       </div>
+      <button id="resolve-continue" class="btn btn-primary resolve-continue-btn" type="button">
+        ${state.roundIndex + 1 >= D.ROUND_PLAN.length ? "See Results" : "Next Round →"}
+      </button>
     `;
   }
 

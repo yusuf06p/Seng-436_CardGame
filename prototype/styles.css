@@ -719,6 +719,23 @@ h1, h2, h3 { margin: 0; }
 .resolve-points .pts-self     { color: var(--success); }
 .resolve-points .pts-opponent { color: var(--text-secondary); margin-left: 14px; }
 
+.resolve-continue-btn {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.lightning-notice {
+  background: linear-gradient(90deg, #2a1f00, #1a1200);
+  border: 1px solid var(--accent-gold);
+  border-radius: var(--radius-md);
+  color: var(--accent-gold);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 10px 16px;
+  text-align: center;
+}
+
 /* ===== End screen ===== */
 
 .screen-end {
