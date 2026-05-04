@@ -1,7 +1,3 @@
-
-# !!! ACİL DEPLOY KOMUTU !!!
-# Terminale şunu yapıştır: npx vercel --prod --force
-
 # ISO TESTIT! — Week 3 Prototype
 
 **Live Demo:** [https://prototype-livid-ten.vercel.app/prototype/index.html](https://prototype-livid-ten.vercel.app/prototype/index.html)
