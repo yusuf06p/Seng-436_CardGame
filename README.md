@@ -1,7 +1,10 @@
 
+# !!! ACİL DEPLOY KOMUTU !!!
+# Terminale şunu yapıştır: npx vercel --prod --force
+
 # ISO TESTIT! — Week 3 Prototype
 
-**Live Demo:** [https://prototype-livid-ten.vercel.app](https://prototype-livid-ten.vercel.app)
+**Live Demo:** [https://prototype-livid-ten.vercel.app/prototype/index.html](https://prototype-livid-ten.vercel.app/prototype/index.html)
 
 **Course:** SENG 436 — Software Quality Assurance
 **Team:** Import Math (Zeynep Nur Karabay, Mert Bursalıoğlu, Yusuf Ali Mertyürek)
@@ -15,7 +18,7 @@ A web-based educational card game that teaches the core conceptual chain of ISO/
 2. No installation, no server, no internet connection needed.
 3. Type a name, click **Start Game**.
 4. Open the **Rules** panel (top-right) any time during the game.
-5. Play through 9 rounds (~10 minutes).
+5. Play through 15 rounds (~15 minutes).
 
 ## What the prototype demonstrates
 
@@ -46,11 +49,11 @@ Seng-436/
 
 | Round type | Max points | What you must do |
 |---|---:|---|
-| Standard (×6) | 3 | Match correct + Defend reason correct + Quality tag correct |
-| Lightning (×2) | 1 | Match the correct concept card |
+| Standard (×10) | 3 | Match correct + Defend reason correct + Quality tag correct |
+| Lightning (×4) | 1 | Match the correct concept card |
 | Audit (×1) | 5 | Match + reason + primary quality (with bonus for an additional related quality) |
 
-Game total max: **25 points** across 9 rounds.
+Game total max: **39 points** across 15 rounds.
 
 ## Learning objectives
 

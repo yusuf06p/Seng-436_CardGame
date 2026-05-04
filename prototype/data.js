@@ -301,9 +301,14 @@
   // Tag scenarios with default round_type if not set
   SCENARIOS.forEach(s => { if (!s.round_type) s.round_type = "standard"; });
 
-  // ---------- Round plan ----------
-  // Fixed for the prototype: 6 standard, 2 lightning, 1 audit. Index = round 0..8.
+  // Fixed for the prototype: 10 standard, 4 lightning, 1 audit. Index = round 0..14.
   const ROUND_PLAN = [
+    { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
+    { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
+    { type: "lightning", matchSec: 20, defendSec: 0,  resolveSec: 5 },
+    { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
+    { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
+    { type: "lightning", matchSec: 20, defendSec: 0,  resolveSec: 5 },
     { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
     { type: "standard",  matchSec: 25, defendSec: 25, resolveSec: 6 },
     { type: "lightning", matchSec: 20, defendSec: 0,  resolveSec: 5 },
