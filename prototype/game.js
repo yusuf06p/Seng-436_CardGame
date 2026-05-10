@@ -1,17 +1,16 @@
 /* ==========================================================================
-   ISO TESTIT! — Game logic + UI
-   Single IIFE. State machine: lobby -> reveal -> match -> defend -> resolve
-   -> (loop) -> end.  No framework.  file:// safe.
+   ISO TESTIT! — Game logic + UI (Multiplayer via PeerJS)
    ========================================================================== */
 
 (function () {
   "use strict";
 
   const D = window.GAME_DATA;
-  if (!D) { console.error("GAME_DATA missing — data.js failed to load"); return; }
+  if (!D) { console.error("GAME_DATA missing"); return; }
 
-  // ---------- DOM refs ----------
+  const PEER_PREFIX = "isotestit-";
   const $ = (id) => document.getElementById(id);
+  
   const dom = {
     screens: {
       lobby:  $("screen-lobby"),
@@ -26,8 +25,21 @@
       lobbyOpen: $("open-rules-from-lobby")
     },
     lobby: {
+      mainControls: $("lobby-main-controls"),
+      multiSetup: $("lobby-multi-setup"),
+      waitingRoom: $("lobby-waiting-room"),
       name: $("player-name"),
-      start: $("start-game")
+      single: $("btn-singleplayer"),
+      multi: $("btn-multiplayer"),
+      createRoom: $("btn-create-room"),
+      joinRoom: $("btn-join-room"),
+      roomCodeInput: $("room-code-input"),
+      btnStartMulti: $("btn-start-multi-game"),
+      btnLeaveRoom: $("btn-leave-room"),
+      displayRoomCode: $("display-room-code"),
+      waitingPlayersList: $("waiting-players-list"),
+      waitingStatus: $("waiting-status"),
+      btnBackMain: $("btn-back-to-main")
     },
     round: {
       counter:   $("round-counter"),
@@ -47,6 +59,7 @@
       resolveOverlay:   $("resolve-overlay"),
       resolveCard:      $("resolve-card"),
       lightningNotice:  $("lightning-notice"),
+      stripOpponent: $("strip-opponent"),
       phaseDots: {
         match:   $("phase-dot-match"),
         defend:  $("phase-dot-defend"),
@@ -56,32 +69,31 @@
     end: {
       banner:   $("end-banner"),
       subline:  $("end-subline"),
-      scoreSelf: $("end-score-player"),
-      scoreOpp:  $("end-score-opponent"),
+      leaderboard: $("end-leaderboard"),
       review:   $("end-review"),
       playAgain: $("play-again")
     }
   };
 
-  // Timer ring constant (circumference for r=52)
   const RING_CIRCUMFERENCE = 326.7;
 
   // ---------- State ----------
   const state = {
+    mode: "single", // "single" or "multi"
+    network: { peer: null, conn: null, conns: [], isHost: false, roomId: null, players: {} },
+    myId: "p1",
     phase: "lobby",
     roundIndex: 0,
     scenarioPool: [],
     auditScenario: null,
     currentScenario: null,
     currentRoundPlan: null,
-    player: { name: "You", score: 0 },
-    opponent: { name: "AI Auditor", score: 0 },
-    match: { card: null, locked: false, deadline: 0, opponentCard: null },
-    defend: { rationaleId: null, qualityTagId: null, deadline: 0, opponentRationale: null, opponentQuality: null },
     history: [],
     timerHandle: null,
     revealHandle: null,
-    resolveHandle: null
+    resolveHandle: null,
+    match: { locked: false, deadline: 0 },
+    defend: { locked: false, deadline: 0 }
   };
 
   // ---------- Utilities ----------
@@ -101,7 +113,7 @@
   }
 
   function clearTimers() {
-    if (state.timerHandle)   { cancelAnimationFrame(state.timerHandle); state.timerHandle = null; }
+    if (state.timerHandle)   { clearInterval(state.timerHandle); state.timerHandle = null; }
     if (state.revealHandle)  { clearTimeout(state.revealHandle);        state.revealHandle = null; }
     if (state.resolveHandle) { clearTimeout(state.resolveHandle);       state.resolveHandle = null; }
   }
@@ -114,8 +126,13 @@
 
   function findCard(id)    { return D.CONCEPT_CARDS.find(c => c.id === id); }
   function findQuality(id) { return D.QUALITIES.find(q => q.id === id); }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
 
-  // ---------- Rules panel content ----------
+  // ---------- Rules ----------
   function renderRules() {
     dom.rules.body.innerHTML = `
       <p>You're a junior QA engineer running through a workday of incoming software events. For each event you (a) classify it correctly using ISO terminology, and (b) defend your reasoning against an audit.</p>
@@ -163,61 +180,263 @@
       <p>The Defend phase is what separates understanding from memorisation. If you pick the right card for the wrong reason, you keep the card and the misconception stays visible — that is by design.</p>
     `;
   }
+  function setRulesOpen(open) { dom.rules.panel.setAttribute("aria-hidden", open ? "false" : "true"); }
 
-  function setRulesOpen(open) {
-    dom.rules.panel.setAttribute("aria-hidden", open ? "false" : "true");
-  }
-
-  // ---------- Lobby ----------
+  // ---------- Lobby & Networking ----------
   function bindLobby() {
-    dom.lobby.start.addEventListener("click", startGame);
-    dom.lobby.name.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") startGame();
-    });
     dom.rules.toggle.addEventListener("click", () => setRulesOpen(dom.rules.panel.getAttribute("aria-hidden") !== "false"));
     dom.rules.close.addEventListener("click", () => setRulesOpen(false));
     dom.rules.lobbyOpen.addEventListener("click", () => setRulesOpen(true));
     dom.end.playAgain.addEventListener("click", () => {
+      resetLobby();
       showScreen("lobby");
-      state.phase = "lobby";
+    });
+
+    dom.lobby.single.onclick = () => {
+      state.mode = "single";
+      startGame();
+    };
+    dom.lobby.multi.onclick = () => {
+      state.mode = "multi";
+      dom.lobby.mainControls.hidden = true;
+      dom.lobby.multiSetup.hidden = false;
+    };
+    dom.lobby.btnBackMain.onclick = resetLobby;
+    dom.lobby.createRoom.onclick = createRoom;
+    dom.lobby.joinRoom.onclick = joinRoom;
+    dom.lobby.btnLeaveRoom.onclick = resetLobby;
+    dom.lobby.btnStartMulti.onclick = hostStartGame;
+  }
+
+  function resetLobby() {
+    if (state.network.peer) { state.network.peer.destroy(); state.network.peer = null; }
+    state.network = { peer: null, conn: null, conns: [], isHost: false, roomId: null, players: {} };
+    dom.lobby.mainControls.hidden = false;
+    dom.lobby.multiSetup.hidden = true;
+    dom.lobby.waitingRoom.hidden = true;
+  }
+
+  function getPlayerName() {
+    return dom.lobby.name.value.trim() || "You";
+  }
+
+  // Generate 4-letter room code
+  function genRoomId() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let r = '';
+    for(let i=0; i<4; i++) r += chars[Math.floor(Math.random() * chars.length)];
+    return r;
+  }
+
+  function initMultiplayerPlayer(id, name, isHost) {
+    state.network.players[id] = { id, name, score: 0, isHost, matchPick: null, rationale: null, quality: null, ready: false };
+  }
+
+  function createRoom() {
+    const roomId = genRoomId();
+    state.network.isHost = true;
+    state.network.roomId = roomId;
+    state.myId = "host";
+    
+    dom.lobby.multiSetup.hidden = true;
+    dom.lobby.waitingRoom.hidden = false;
+    dom.lobby.displayRoomCode.textContent = roomId;
+    dom.lobby.waitingStatus.textContent = "Creating room...";
+    dom.lobby.btnStartMulti.hidden = true;
+
+    state.network.peer = new Peer(PEER_PREFIX + roomId);
+    state.network.peer.on('open', (id) => {
+      dom.lobby.waitingStatus.textContent = "Waiting for players...";
+      dom.lobby.btnStartMulti.hidden = false;
+      state.network.players = {};
+      initMultiplayerPlayer(state.myId, getPlayerName(), true);
+      renderWaitingRoom();
+    });
+
+    state.network.peer.on('connection', (conn) => {
+      state.network.conns.push(conn);
+      conn.on('data', (data) => handleHostData(conn, data));
+      conn.on('close', () => {
+        state.network.conns = state.network.conns.filter(c => c !== conn);
+        delete state.network.players[conn.peer];
+        broadcastLobby();
+        renderWaitingRoom();
+      });
     });
   }
 
-  function startGame() {
-    const raw = dom.lobby.name.value.trim();
-    state.player.name = raw || "You";
-    state.player.score = 0;
-    state.opponent.score = 0;
-    state.history = [];
-    state.roundIndex = 0;
+  function joinRoom() {
+    const code = dom.lobby.roomCodeInput.value.trim().toUpperCase();
+    if (!code) return;
 
-    // Shuffle 14 standard scenarios; reserve audit (S15) for round 9
+    dom.lobby.multiSetup.hidden = true;
+    dom.lobby.waitingRoom.hidden = false;
+    dom.lobby.displayRoomCode.textContent = code;
+    dom.lobby.waitingStatus.textContent = "Connecting...";
+    dom.lobby.btnStartMulti.hidden = true;
+
+    state.network.isHost = false;
+    state.network.roomId = code;
+    
+    state.network.peer = new Peer();
+    state.network.peer.on('open', (id) => {
+      state.myId = id;
+      const conn = state.network.peer.connect(PEER_PREFIX + code);
+      state.network.conn = conn;
+      
+      conn.on('open', () => {
+        dom.lobby.waitingStatus.textContent = "Connected. Waiting for host to start...";
+        conn.send({ type: 'JOIN', name: getPlayerName() });
+      });
+      conn.on('data', handleClientData);
+      conn.on('close', () => {
+        alert("Disconnected from host.");
+        resetLobby();
+      });
+    });
+  }
+
+  function broadcast(data) {
+    if (!state.network.isHost) return;
+    state.network.conns.forEach(c => c.send(data));
+  }
+  function sendToHost(data) {
+    if (state.network.isHost) {
+       handleHostData({peer: state.myId}, data);
+    } else {
+       if (state.network.conn) state.network.conn.send(data);
+    }
+  }
+
+  // Host logic
+  function handleHostData(conn, data) {
+    const peerId = conn.peer;
+    if (data.type === 'JOIN') {
+      initMultiplayerPlayer(peerId, data.name, false);
+      broadcastLobby();
+      renderWaitingRoom();
+    } else if (data.type === 'ACTION') {
+      const p = state.network.players[peerId];
+      if (!p) return;
+      if (state.phase === 'match' && data.action === 'match') {
+        p.matchPick = data.cardId;
+        p.ready = true;
+        checkPhaseAdvance();
+      } else if (state.phase === 'defend' && data.action === 'defend') {
+        p.rationale = data.rationaleId;
+        p.quality = data.qualityId;
+        p.ready = true;
+        checkPhaseAdvance();
+      }
+    }
+  }
+
+  function broadcastLobby() {
+    broadcast({ type: 'LOBBY', players: state.network.players });
+  }
+
+  // Client logic
+  function handleClientData(data) {
+    if (data.type === 'LOBBY') {
+      state.network.players = data.players;
+      renderWaitingRoom();
+    } else if (data.type === 'START') {
+      state.scenarioPool = data.pool;
+      state.auditScenario = data.audit;
+      state.roundIndex = 0;
+      state.history = [];
+      dom.round.playerNameDisplay.textContent = getPlayerName();
+      dom.round.stripOpponent.hidden = true; // hide AI in multi
+      showScreen("round");
+      enterReveal();
+    } else if (data.type === 'ADVANCE') {
+      clearTimers();
+      if (data.phase === 'defend') enterDefend();
+      else if (data.phase === 'resolve') {
+        state.network.players = data.players; // receive updated scores
+        enterResolve();
+      } else if (data.phase === 'end') {
+        enterEnd();
+      } else if (data.phase === 'reveal') {
+        state.roundIndex = data.roundIndex;
+        enterReveal();
+      }
+    } else if (data.type === 'TIMER') {
+      // Sync timer display roughly
+      updateTimerUI(data.remaining, data.total);
+    }
+  }
+
+  function renderWaitingRoom() {
+    const html = Object.values(state.network.players).map(p => `
+      <div class="waiting-player-row">
+        <span>${p.isHost ? '👑' : '👤'}</span>
+        <span>${escapeHtml(p.name)}</span>
+        ${p.id === state.myId ? '(You)' : ''}
+      </div>
+    `).join("");
+    dom.lobby.waitingPlayersList.innerHTML = html;
+  }
+
+  function hostStartGame() {
+    // Standard setup
     const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard");
     state.scenarioPool = shuffle(standardPool);
     state.auditScenario = D.SCENARIOS.find(s => s.round_type === "audit");
+    state.roundIndex = 0;
+    state.history = [];
+    
+    // reset scores
+    Object.values(state.network.players).forEach(p => p.score = 0);
 
-    dom.round.playerNameDisplay.textContent = state.player.name;
+    broadcast({ type: 'START', pool: state.scenarioPool, audit: state.auditScenario });
+    
+    dom.round.playerNameDisplay.textContent = getPlayerName();
+    dom.round.stripOpponent.hidden = true; // hide AI
     showScreen("round");
     enterReveal();
   }
 
-  // ---------- Round flow ----------
+  function startGame() {
+    // Single player setup
+    state.mode = "single";
+    state.myId = "p1";
+    state.network.isHost = true;
+    state.network.players = {
+      "p1": { id: "p1", name: getPlayerName(), score: 0, ready: false },
+      "ai": { id: "ai", name: "AI Auditor", score: 0, ready: false }
+    };
+    const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard");
+    state.scenarioPool = shuffle(standardPool);
+    state.auditScenario = D.SCENARIOS.find(s => s.round_type === "audit");
+    state.roundIndex = 0;
+    state.history = [];
+    
+    dom.round.playerNameDisplay.textContent = getPlayerName();
+    dom.round.stripOpponent.hidden = false;
+    showScreen("round");
+    enterReveal();
+  }
+
+  // ---------- Round Flow ----------
   function pickScenarioForRound(idx) {
     state.currentRoundPlan = D.ROUND_PLAN[idx];
-    if (state.currentRoundPlan.type === "audit") {
-      return state.auditScenario;
-    }
-    // Pop the next scenario from the shuffled pool. Lightning rounds reuse
-    // the same pool but tagged via round plan, so we don't need separate ids.
+    if (state.currentRoundPlan.type === "audit") return state.auditScenario;
     return state.scenarioPool[idx % state.scenarioPool.length];
   }
 
   function enterReveal() {
     clearTimers();
     state.phase = "reveal";
-
-    state.match  = { card: null, locked: false, deadline: 0, opponentCard: null };
-    state.defend = { rationaleId: null, qualityTagId: null, deadline: 0, opponentRationale: null, opponentQuality: null };
+    state.match.locked = false;
+    state.defend.locked = false;
+    
+    Object.values(state.network.players).forEach(p => {
+      p.ready = false;
+      p.matchPick = null;
+      p.rationale = null;
+      p.quality = null;
+    });
 
     state.currentScenario = pickScenarioForRound(state.roundIndex);
 
@@ -236,18 +455,17 @@
     dom.round.defendPanel.hidden = true;
     dom.round.resolveOverlay.hidden = true;
     dom.round.resolveCard.innerHTML = "";
+    updateTimerUI(0, 1); // reset to full
     dom.round.timerText.textContent = "—";
-    dom.round.timerFill.style.strokeDashoffset = "0";
-    dom.round.timerFill.classList.remove("is-warning");
     setPhaseDot("match");
-
     dom.round.lightningNotice.hidden = (t !== "lightning");
 
     renderHand({ disabled: true });
     updateScores();
 
-    // brief pause so player can read the scenario before timer starts
-    state.revealHandle = setTimeout(enterMatch, 1400);
+    if (state.mode === 'single' || state.mode === 'multi') {
+      state.revealHandle = setTimeout(enterMatch, 1400);
+    }
   }
 
   function enterMatch() {
@@ -256,34 +474,62 @@
     dom.round.lightningNotice.hidden = true;
     renderHand({ disabled: false });
 
-    const ms = state.currentRoundPlan.matchSec * 1000;
-    state.match.deadline = Date.now() + ms;
-    runTimer(state.match.deadline, ms, onMatchTimeout);
-
-    // AI picks immediately but doesn't reveal yet
-    state.match.opponentCard = aiPickCard(state.currentScenario);
+    if (state.mode === 'single' || state.network.isHost) {
+      const ms = state.currentRoundPlan.matchSec * 1000;
+      state.match.deadline = Date.now() + ms;
+      runHostTimer(state.match.deadline, ms, () => forceAdvance('match'));
+      
+      if (state.mode === 'single') {
+        // AI logic
+        state.network.players['ai'].matchPick = aiPickCard(state.currentScenario).id;
+        state.network.players['ai'].ready = true;
+      }
+    }
   }
 
-  function onMatchTimeout() {
-    // If player didn't pick, treat as wrong (no card)
-    if (!state.match.locked) state.match.card = null;
-    advanceFromMatch();
+  let advanceTimeout = null;
+  function checkPhaseAdvance() {
+    if (!state.network.isHost && state.mode !== 'single') return;
+    const allReady = Object.values(state.network.players).every(p => p.ready);
+    if (allReady && !advanceTimeout) {
+       clearTimers();
+       // slight delay for visual UX
+       advanceTimeout = setTimeout(() => {
+           advanceTimeout = null;
+           forceAdvance(state.phase);
+       }, 400);
+    }
   }
 
-  function advanceFromMatch() {
-    if (state.phase !== "match") return;
+  function forceAdvance(fromPhase) {
+    if (advanceTimeout) { clearTimeout(advanceTimeout); advanceTimeout = null; }
     clearTimers();
-    if (state.currentRoundPlan.type === "lightning") {
+    if (fromPhase === 'match') {
+      const isLightning = state.currentRoundPlan.type === "lightning";
+      Object.values(state.network.players).forEach(p => p.ready = false);
+      if (isLightning) {
+        scoreRound();
+        broadcast({ type: 'ADVANCE', phase: 'resolve', players: state.network.players });
+        enterResolve();
+      } else {
+        broadcast({ type: 'ADVANCE', phase: 'defend' });
+        enterDefend();
+      }
+    } else if (fromPhase === 'defend') {
+      Object.values(state.network.players).forEach(p => p.ready = false);
+      // Calc scores before broadcasting
+      scoreRound();
+      broadcast({ type: 'ADVANCE', phase: 'resolve', players: state.network.players });
       enterResolve();
-    } else {
-      enterDefend();
     }
   }
 
   function enterDefend() {
     state.phase = "defend";
     setPhaseDot("defend");
-    renderHand({ disabled: true, lockedId: state.match.card ? state.match.card.id : null });
+    
+    const myP = state.network.players[state.myId];
+    renderHand({ disabled: true, lockedId: myP.matchPick });
 
     dom.round.defendPanel.hidden = false;
     renderRationaleChips();
@@ -291,119 +537,165 @@
     dom.round.defendSubmit.disabled = true;
     dom.round.defendSubmit.onclick = onDefendSubmit;
 
-    const ms = state.currentRoundPlan.defendSec * 1000;
-    state.defend.deadline = Date.now() + ms;
-    runTimer(state.defend.deadline, ms, onDefendTimeout);
+    if (state.mode === 'single' || state.network.isHost) {
+      const ms = state.currentRoundPlan.defendSec * 1000;
+      state.defend.deadline = Date.now() + ms;
+      runHostTimer(state.defend.deadline, ms, () => forceAdvance('defend'));
 
-    // AI fills its defence
-    state.defend.opponentRationale = aiPickRationale(state.currentScenario);
-    state.defend.opponentQuality   = aiPickQuality(state.currentScenario);
-  }
-
-  function onDefendTimeout() {
-    advanceFromDefend();
+      if (state.mode === 'single') {
+        state.network.players['ai'].rationale = aiPickRationale(state.currentScenario);
+        state.network.players['ai'].quality = aiPickQuality(state.currentScenario);
+        state.network.players['ai'].ready = true;
+      }
+    }
   }
 
   function onDefendSubmit() {
-    if (!state.defend.rationaleId || !state.defend.qualityTagId) return;
-    advanceFromDefend();
-  }
-
-  function advanceFromDefend() {
-    clearTimers();
-    enterResolve();
+    if (state.defend.locked) return;
+    const rat = document.querySelector("#rationale-chips .is-selected");
+    const qual = document.querySelector("#quality-chips .is-selected");
+    if (!rat || !qual) return;
+    
+    state.defend.locked = true;
+    state.network.players[state.myId].rationale = rat.dataset.id;
+    state.network.players[state.myId].quality = qual.dataset.id;
+    dom.round.defendSubmit.disabled = true;
+    dom.round.defendSubmit.textContent = state.mode === 'multi' ? "Waiting for others..." : "Locked";
+    
+    sendToHost({ type: 'ACTION', action: 'defend', rationaleId: rat.dataset.id, qualityId: qual.dataset.id });
   }
 
   function enterResolve() {
     state.phase = "resolve";
     setPhaseDot("resolve");
     dom.round.defendPanel.hidden = true;
-
-    // Hide hand timer ring during resolve (set to full)
-    dom.round.timerFill.style.strokeDashoffset = "0";
+    
+    updateTimerUI(0, 1);
     dom.round.timerText.textContent = "✓";
 
-    const result = scoreRound();
-    state.player.score   += result.playerPoints;
-    state.opponent.score += result.opponentPoints;
+    // In singleplayer, calc scores here if not done
+    if (state.mode === 'single') {
+      scoreRound();
+    }
 
-    state.history.push({
-      round: state.roundIndex + 1,
-      type:  state.currentRoundPlan.type,
-      scenario: state.currentScenario,
-      playerPick:    state.match.card ? state.match.card.id : null,
-      opponentPick:  state.match.opponentCard ? state.match.opponentCard.id : null,
-      playerRationale: state.defend.rationaleId,
-      playerQuality:   state.defend.qualityTagId,
-      points: result.playerPoints
-    });
-
-    renderResolve(result);
+    renderResolve();
     updateScores();
-
     dom.round.resolveOverlay.hidden = false;
 
+    // Only host/single can advance
     const continueBtn = document.getElementById("resolve-continue");
     if (continueBtn) {
-      continueBtn.onclick = () => {
-        clearTimers();
-        advanceFromResolve();
-      };
-    }
-  }
-
-  function advanceFromResolve() {
-    state.roundIndex += 1;
-    if (state.roundIndex >= D.ROUND_PLAN.length) {
-      enterEnd();
-    } else {
-      enterReveal();
+      if (state.mode === 'single' || state.network.isHost) {
+        continueBtn.hidden = false;
+        continueBtn.onclick = () => {
+          clearTimers();
+          state.roundIndex += 1;
+          if (state.roundIndex >= D.ROUND_PLAN.length) {
+            broadcast({ type: 'ADVANCE', phase: 'end' });
+            enterEnd();
+          } else {
+            broadcast({ type: 'ADVANCE', phase: 'reveal', roundIndex: state.roundIndex });
+            enterReveal();
+          }
+        };
+      } else {
+        continueBtn.hidden = true; // wait for host
+      }
     }
   }
 
   function enterEnd() {
     clearTimers();
     state.phase = "end";
-
-    const p = state.player.score;
-    const o = state.opponent.score;
-    let banner, subline, klass;
-    if (p > o) {
-      banner = `${state.player.name} wins!`;
-      subline = "You out-reasoned the AI Auditor. Nice work.";
-      klass = "is-win";
-    } else if (p < o) {
-      banner = "AI Auditor wins";
-      subline = "Close one — defend more reasons next time.";
-      klass = "is-lose";
+    
+    const myScore = state.network.players[state.myId].score;
+    const allScores = Object.values(state.network.players).sort((a,b) => b.score - a.score);
+    const topScore = allScores[0].score;
+    
+    let banner, klass;
+    if (myScore === topScore) {
+      banner = "You Win!"; klass = "is-win";
     } else {
-      banner = "It's a tie";
-      subline = "Even score. Replay for the tiebreaker.";
-      klass = "is-tie";
+      banner = "Game Over"; klass = "is-lose";
     }
+    
     dom.end.banner.textContent = banner;
     dom.end.banner.className = "end-banner " + klass;
-    dom.end.subline.textContent = subline;
-    dom.end.scoreSelf.textContent = p + " pts";
-    dom.end.scoreOpp.textContent  = o + " pts";
+    dom.end.subline.textContent = state.mode === 'single' ? "Review your results." : "Multiplayer results";
+    
+    // Render leaderboard
+    let html = "";
+    allScores.forEach((p, i) => {
+       html += `
+         <div class="end-score-row" style="${p.id === state.myId ? 'border-color:var(--accent-gold);' : ''}">
+           <span>${i+1}. ${escapeHtml(p.name)}</span>
+           <strong>${p.score} pts</strong>
+         </div>
+       `;
+    });
+    dom.end.leaderboard.innerHTML = html;
 
-    renderEndReview();
+    renderEndReview(); // For simplicity, we just show scenario text, we can skip full history rendering or adapt it.
     showScreen("end");
   }
 
-  // ---------- Rendering ----------
+  // ---------- Rendering & Helpers ----------
   function updateScores() {
-    dom.round.playerScore.textContent   = String(state.player.score);
-    dom.round.opponentScore.textContent = String(state.opponent.score);
+    dom.round.playerScore.textContent = String(state.network.players[state.myId]?.score || 0);
+    if (state.mode === 'single') {
+       dom.round.opponentScore.textContent = String(state.network.players['ai']?.score || 0);
+    }
+  }
+
+  function updateTimerUI(remaining, totalMs) {
+    if ((state.phase === 'match' && state.match.locked) || 
+        (state.phase === 'defend' && state.defend.locked)) {
+       dom.round.timerText.textContent = "⌛";
+       dom.round.timerFill.style.strokeDashoffset = "0";
+       dom.round.timerFill.classList.remove("is-warning");
+       return;
+    }
+
+    if (remaining <= 0) {
+      dom.round.timerText.textContent = "0";
+      dom.round.timerFill.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
+      return;
+    }
+    const frac = remaining / totalMs;
+    const offset = RING_CIRCUMFERENCE * (1 - frac);
+    dom.round.timerFill.style.strokeDashoffset = String(offset);
+    dom.round.timerText.textContent = String(Math.ceil(remaining / 1000));
+    dom.round.timerFill.classList.toggle("is-warning", remaining < 5000);
+  }
+
+  function runHostTimer(deadline, totalMs, onExpire) {
+    if (state.timerHandle) clearInterval(state.timerHandle);
+    let lastBroadcast = 0;
+    
+    state.timerHandle = setInterval(() => {
+      const remaining = deadline - Date.now();
+      updateTimerUI(remaining, totalMs);
+      
+      // Broadcast timer to clients every 1s
+      if (state.mode === 'multi' && state.network.isHost && Date.now() - lastBroadcast > 1000) {
+         broadcast({ type: 'TIMER', remaining, total: totalMs });
+         lastBroadcast = Date.now();
+      }
+
+      if (remaining <= 0) {
+        clearInterval(state.timerHandle);
+        state.timerHandle = null;
+        onExpire();
+      }
+    }, 200);
   }
 
   function renderHand({ disabled, lockedId }) {
-    const lock = lockedId || (state.match.card && state.match.locked ? state.match.card.id : null);
     const html = D.CONCEPT_CARDS.map(card => {
-      const isLocked = lock === card.id;
+      const isLocked = lockedId === card.id;
       return `
         <button class="card card-${card.family}${isLocked ? " is-locked" : ""}"
-                data-card-id="${card.id}" ${disabled ? "disabled" : ""}>
+                data-id="${card.id}" ${disabled ? "disabled" : ""}>
           <span class="card-family">${card.family.toUpperCase()}</span>
           <span class="card-name">${card.name}</span>
           <span class="card-short">${card.short}</span>
@@ -413,217 +705,158 @@
 
     if (!disabled) {
       Array.from(dom.round.hand.querySelectorAll(".card")).forEach(btn => {
-        btn.addEventListener("click", onCardClick);
+        btn.onclick = (e) => {
+          if (state.phase !== "match" || state.match.locked) return;
+          const id = e.currentTarget.dataset.id;
+          state.match.locked = true;
+          state.network.players[state.myId].matchPick = id;
+          renderHand({ disabled: true, lockedId: id });
+          if (state.mode === 'multi' && !state.network.isHost) {
+              dom.round.timerText.textContent = "⌛";
+          }
+          sendToHost({ type: 'ACTION', action: 'match', cardId: id });
+        };
       });
     }
-  }
-
-  function onCardClick(e) {
-    if (state.phase !== "match" || state.match.locked) return;
-    const id = e.currentTarget.dataset.cardId;
-    state.match.card = findCard(id);
-    state.match.locked = true;
-    // Brief visual lock then auto-advance
-    renderHand({ disabled: true, lockedId: id });
-    setTimeout(advanceFromMatch, 350);
   }
 
   function renderRationaleChips() {
     const opts = state.currentScenario.rationale.options;
     dom.round.rationaleChips.innerHTML = opts.map(opt =>
-      `<button class="chip" data-rationale-id="${opt.id}">${opt.text}</button>`
+      `<button class="chip" data-id="${opt.id}">${opt.text}</button>`
     ).join("");
-    Array.from(dom.round.rationaleChips.querySelectorAll(".chip")).forEach(b => {
-      b.addEventListener("click", (e) => {
-        const id = e.currentTarget.dataset.rationaleId;
-        state.defend.rationaleId = id;
-        Array.from(dom.round.rationaleChips.querySelectorAll(".chip")).forEach(x => {
-          x.classList.toggle("is-selected", x.dataset.rationaleId === id);
-        });
-        maybeEnableSubmit();
-      });
-    });
+    setupChips(dom.round.rationaleChips);
   }
 
   function renderQualityChips() {
     dom.round.qualityChips.innerHTML = D.QUALITIES.map(q =>
-      `<button class="chip" data-quality-id="${q.id}">${q.name}</button>`
+      `<button class="chip" data-id="${q.id}">${q.name}</button>`
     ).join("");
-    Array.from(dom.round.qualityChips.querySelectorAll(".chip")).forEach(b => {
-      b.addEventListener("click", (e) => {
-        const id = e.currentTarget.dataset.qualityId;
-        state.defend.qualityTagId = id;
-        Array.from(dom.round.qualityChips.querySelectorAll(".chip")).forEach(x => {
-          x.classList.toggle("is-selected", x.dataset.qualityId === id);
-        });
-        maybeEnableSubmit();
-      });
+    setupChips(dom.round.qualityChips);
+  }
+
+  function setupChips(container) {
+    Array.from(container.querySelectorAll(".chip")).forEach(b => {
+      b.onclick = (e) => {
+        if (state.defend.locked) return;
+        Array.from(container.querySelectorAll(".chip")).forEach(x => x.classList.remove("is-selected"));
+        e.currentTarget.classList.add("is-selected");
+        
+        const rat = document.querySelector("#rationale-chips .is-selected");
+        const qual = document.querySelector("#quality-chips .is-selected");
+        dom.round.defendSubmit.disabled = !(rat && qual);
+      };
     });
   }
 
-  function maybeEnableSubmit() {
-    dom.round.defendSubmit.disabled = !(state.defend.rationaleId && state.defend.qualityTagId);
-  }
-
-  // ---------- Timer ----------
-  function runTimer(deadline, totalMs, onExpire) {
-    function frame() {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        dom.round.timerText.textContent = "0";
-        dom.round.timerFill.style.strokeDashoffset = String(RING_CIRCUMFERENCE);
-        state.timerHandle = null;
-        onExpire();
-        return;
-      }
-      const frac = remaining / totalMs;
-      const offset = RING_CIRCUMFERENCE * (1 - frac);
-      dom.round.timerFill.style.strokeDashoffset = String(offset);
-      dom.round.timerText.textContent = String(Math.ceil(remaining / 1000));
-      dom.round.timerFill.classList.toggle("is-warning", remaining < 5000);
-      state.timerHandle = requestAnimationFrame(frame);
-    }
-    state.timerHandle = requestAnimationFrame(frame);
-  }
-
-  // ---------- Scoring ----------
   function scoreRound() {
     const sc = state.currentScenario;
     const plan = state.currentRoundPlan;
+    const s = D.SCORING;
 
-    const playerMatchOk = state.match.card && state.match.card.id === sc.expected.match;
-    const opponentMatchOk = state.match.opponentCard && state.match.opponentCard.id === sc.expected.match;
+    Object.values(state.network.players).forEach(p => {
+      let pts = 0;
+      const mOk = p.matchPick === sc.expected.match;
+      const rOk = p.rationale === sc.rationale.correct_id;
+      const qOk = p.quality === sc.expected.quality;
 
-    let playerPoints = 0, opponentPoints = 0;
-    let playerReasonOk = false, playerQualityOk = false;
-    let opponentReasonOk = false, opponentQualityOk = false;
+      p.lastResult = { matchOk: mOk, reasonOk: rOk, qualityOk: qOk, points: 0 };
 
-    if (plan.type === "lightning") {
-      playerPoints   = playerMatchOk   ? D.SCORING.lightning.correct : 0;
-      opponentPoints = opponentMatchOk ? D.SCORING.lightning.correct : 0;
-    } else if (plan.type === "audit") {
-      // Audit: 2 (match) + 2 (reason) + 1 (primary quality) + 1 (bonus quality)
-      playerReasonOk  = state.defend.rationaleId === sc.rationale.correct_id;
-      const primaryQ  = sc.expected.quality;
-      const bonusQs   = sc.expected.also_qualities || [];
-      playerQualityOk = state.defend.qualityTagId === primaryQ;
-      const playerBonusOk = bonusQs.includes(state.defend.qualityTagId);
-
-      playerPoints += playerMatchOk ? D.SCORING.audit.match : 0;
-      playerPoints += playerReasonOk ? D.SCORING.audit.reason : 0;
-      playerPoints += playerQualityOk ? D.SCORING.audit.quality_primary : 0;
-      // Bonus quality: only counted if primary already correct via primary slot
-      // (we keep it simple: if player picked a "also" quality, give bonus too)
-      if (playerBonusOk && !playerQualityOk) playerPoints += D.SCORING.audit.quality_bonus;
-
-      // Opponent (AI) — simulate similar correctness
-      opponentReasonOk  = state.defend.opponentRationale === sc.rationale.correct_id;
-      opponentQualityOk = state.defend.opponentQuality === primaryQ;
-      const opponentBonusOk = bonusQs.includes(state.defend.opponentQuality);
-
-      opponentPoints += opponentMatchOk ? D.SCORING.audit.match : 0;
-      opponentPoints += opponentReasonOk ? D.SCORING.audit.reason : 0;
-      opponentPoints += opponentQualityOk ? D.SCORING.audit.quality_primary : 0;
-      if (opponentBonusOk && !opponentQualityOk) opponentPoints += D.SCORING.audit.quality_bonus;
-    } else {
-      // Standard
-      playerReasonOk  = state.defend.rationaleId === sc.rationale.correct_id;
-      playerQualityOk = state.defend.qualityTagId === sc.expected.quality;
-      opponentReasonOk  = state.defend.opponentRationale === sc.rationale.correct_id;
-      opponentQualityOk = state.defend.opponentQuality === sc.expected.quality;
-
-      const s = D.SCORING.standard;
-      if (playerMatchOk && playerReasonOk && playerQualityOk)        playerPoints = s.perfect;
-      else if (playerMatchOk && playerReasonOk)                       playerPoints = s.reason_correct;
-      else if (playerMatchOk)                                         playerPoints = s.match_only;
-      else                                                            playerPoints = s.wrong;
-
-      if (opponentMatchOk && opponentReasonOk && opponentQualityOk)   opponentPoints = s.perfect;
-      else if (opponentMatchOk && opponentReasonOk)                    opponentPoints = s.reason_correct;
-      else if (opponentMatchOk)                                        opponentPoints = s.match_only;
-      else                                                             opponentPoints = s.wrong;
-    }
-
-    return {
-      playerPoints, opponentPoints,
-      playerMatchOk, playerReasonOk, playerQualityOk,
-      opponentMatchOk, opponentReasonOk, opponentQualityOk
-    };
+      if (plan.type === "lightning") {
+        if (mOk) pts = s.lightning.correct;
+      } else if (plan.type === "audit") {
+        if (mOk) pts += s.audit.match;
+        if (rOk) pts += s.audit.reason;
+        if (qOk) pts += s.audit.quality_primary;
+        if (sc.expected.also_qualities && sc.expected.also_qualities.includes(p.quality) && !qOk) {
+            pts += s.audit.quality_bonus;
+        }
+      } else {
+        if (mOk && rOk && qOk) pts = s.standard.perfect;
+        else if (mOk && rOk) pts = s.standard.reason_correct;
+        else if (mOk) pts = s.standard.match_only;
+      }
+      p.score += pts;
+      p.lastResult.points = pts;
+    });
+    
+    // Save to history for my player
+    const myP = state.network.players[state.myId];
+    state.history.push({
+      round: state.roundIndex + 1,
+      scenario: sc,
+      pick: myP.matchPick,
+      pts: myP.lastResult.points
+    });
   }
 
-  // ---------- Resolve render ----------
-  function renderResolve(result) {
+  function renderResolve() {
     const sc = state.currentScenario;
-    const isLightning = state.currentRoundPlan.type === "lightning";
-
-    const correctMatchCard = findCard(sc.expected.match);
+    const correctCard = findCard(sc.expected.match);
     const correctReason = sc.rationale.options.find(o => o.id === sc.rationale.correct_id);
     const correctQuality = findQuality(sc.expected.quality);
 
-    const playerCardName    = state.match.card ? state.match.card.name : "— (no pick)";
-    const opponentCardName  = state.match.opponentCard ? state.match.opponentCard.name : "— (no pick)";
+    const myP = state.network.players[state.myId];
+    const res = myP.lastResult || {};
+    const isLightning = state.currentRoundPlan.type === "lightning";
 
-    const playerReasonText  = state.defend.rationaleId
-      ? sc.rationale.options.find(o => o.id === state.defend.rationaleId).text
-      : "— (no pick)";
-    const playerQualityName = state.defend.qualityTagId
-      ? findQuality(state.defend.qualityTagId).name
-      : "— (no pick)";
+    let headlineClass = "is-mixed", headlineText = "Round Over";
+    if (!res.matchOk) { headlineClass = "is-lose"; headlineText = "Wrong card."; }
+    else if (isLightning) { headlineClass = "is-win"; headlineText = "Correct!"; }
+    else if (res.reasonOk && res.qualityOk) { headlineClass = "is-win"; headlineText = "Perfect defence!"; }
 
-    let headlineClass, headlineText;
-    if (!result.playerMatchOk) {
-      headlineClass = "is-lose";
-      headlineText  = "Wrong card — penalty + correction.";
-    } else if (isLightning) {
-      headlineClass = "is-win";
-      headlineText  = "Correct! +1 pt.";
-    } else if (result.playerReasonOk && result.playerQualityOk) {
-      headlineClass = "is-win";
-      headlineText  = "Perfect — card, reason and quality tag all correct.";
-    } else if (result.playerReasonOk) {
-      headlineClass = "is-mixed";
-      headlineText  = "Right card and reason — quality tag was off.";
-    } else {
-      headlineClass = "is-mixed";
-      headlineText  = "Right card, wrong reason — misconception caught.";
-    }
-
-    const reminderText = D.REMINDERS[sc.expected.match] || "";
-    const explanation  = sc.explanation || reminderText;
+    const playerCardName = myP.matchPick ? findCard(myP.matchPick).name : "—";
+    const explanation  = sc.explanation || D.REMINDERS[sc.expected.match] || "";
 
     const reasonRow = isLightning ? "" : `
       <div class="resolve-row">
         <div class="label">REASON</div>
-        <div class="value-mark ${result.playerReasonOk ? "is-correct" : "is-wrong"}">
-          ${result.playerReasonOk ? "✓" : "✗"} you: ${escapeHtml(playerReasonText)}
+        <div class="value-mark ${res.reasonOk ? "is-correct" : "is-wrong"}">
+          ${res.reasonOk ? "✓" : "✗"}
         </div>
         <div>correct: ${escapeHtml(correctReason.text)}</div>
       </div>
       <div class="resolve-row">
         <div class="label">25010 TAG</div>
-        <div class="value-mark ${result.playerQualityOk ? "is-correct" : "is-wrong"}">
-          ${result.playerQualityOk ? "✓" : "✗"} you: ${escapeHtml(playerQualityName)}
+        <div class="value-mark ${res.qualityOk ? "is-correct" : "is-wrong"}">
+          ${res.qualityOk ? "✓" : "✗"}
         </div>
         <div>correct: ${escapeHtml(correctQuality.name)}</div>
       </div>
     `;
+
+    // Multi results string
+    let multiStr = "";
+    if (state.mode === 'multi') {
+       const sorted = Object.values(state.network.players).sort((a,b) => b.score - a.score);
+       multiStr = `<div style="margin-top: 15px;"><strong>Live Leaderboard</strong></div>` + 
+         sorted.map((p, i) => `
+         <div style="display:flex; justify-content:space-between; margin-top:4px; padding:6px 10px; background:var(--bg-mid); border: 1px solid var(--border-soft); border-radius:4px; ${p.id === state.myId ? 'border-color:var(--accent-gold);' : ''}">
+           <span>${i+1}. ${escapeHtml(p.name)}</span>
+           <span><strong>${p.score} pts</strong> <span style="color:var(--success)">(+${p.lastResult.points})</span></span>
+         </div>
+       `).join("");
+    } else {
+       const ai = state.network.players['ai'];
+       multiStr = `AI Auditor: +${ai.lastResult.points} (played ${ai.matchPick ? findCard(ai.matchPick).name : '-'})`;
+    }
 
     dom.round.resolveCard.innerHTML = `
       <div class="resolve-headline ${headlineClass}">${headlineText}</div>
       <div class="resolve-rows">
         <div class="resolve-row">
           <div class="label">CARD</div>
-          <div class="value-mark ${result.playerMatchOk ? "is-correct" : "is-wrong"}">
-            ${result.playerMatchOk ? "✓" : "✗"} you: ${escapeHtml(playerCardName)}
+          <div class="value-mark ${res.matchOk ? "is-correct" : "is-wrong"}">
+            ${res.matchOk ? "✓" : "✗"} you: ${escapeHtml(playerCardName)}
           </div>
-          <div>correct: ${escapeHtml(correctMatchCard.name)}</div>
+          <div>correct: ${escapeHtml(correctCard.name)}</div>
         </div>
         ${reasonRow}
       </div>
       <div class="resolve-explanation">${escapeHtml(explanation)}</div>
-      <div class="resolve-points">
-        <span class="pts-self">+${result.playerPoints} pts</span>
-        <span class="pts-opponent">AI: +${result.opponentPoints} (played ${escapeHtml(opponentCardName)})</span>
+      <div class="resolve-points" style="font-size:14px; color:var(--text-secondary); margin-top:10px;">
+        <strong style="color:var(--success)">You: +${res.points} pts</strong><br>
+        ${multiStr}
       </div>
       <button id="resolve-continue" class="btn btn-primary resolve-continue-btn" type="button">
         ${state.roundIndex + 1 >= D.ROUND_PLAN.length ? "See Results" : "Next Round →"}
@@ -632,79 +865,31 @@
   }
 
   function renderEndReview() {
-    const rows = state.history.map(h => {
-      const sc = h.scenario;
-      const correctCard = findCard(sc.expected.match).name;
-      const youCard = h.playerPick ? findCard(h.playerPick).name : "— (skip)";
-      const matchOk = h.playerPick === sc.expected.match;
-      const reason = h.playerRationale
-        ? (h.playerRationale === sc.rationale.correct_id ? "<span class='ok'>✓ correct reason</span>" : "<span class='bad'>✗ wrong reason</span>")
-        : "<span class='bad'>— no reason given</span>";
-      const qty = h.playerQuality
-        ? (h.playerQuality === sc.expected.quality ? "<span class='ok'>✓ correct 25010 tag</span>" : "<span class='bad'>✗ wrong 25010 tag</span>")
-        : "<span class='bad'>— no tag</span>";
-      const skipReasonForLightning = h.type === "lightning";
-      return `
-        <div class="review-row">
-          <div class="review-head">
-            <span>Round ${h.round} · ${labelOfType(h.type)}</span>
-            <span>+${h.points} pts</span>
-          </div>
-          <div class="review-line"><strong>Scenario:</strong> ${escapeHtml(sc.text)}</div>
-          <div class="review-line">
-            <strong>You played:</strong> ${escapeHtml(youCard)} —
-            ${matchOk ? "<span class='ok'>✓ match</span>" : "<span class='bad'>✗ correct was " + escapeHtml(correctCard) + "</span>"}
-          </div>
-          ${skipReasonForLightning ? "" : `<div class="review-line">${reason} · ${qty}</div>`}
-          <div class="review-line"><em>${escapeHtml(D.REMINDERS[sc.expected.match] || "")}</em></div>
-        </div>
-      `;
-    }).join("");
-    dom.end.review.innerHTML = rows || "<div class='review-row'>No rounds played.</div>";
-  }
-
-  function labelOfType(t) {
-    return t === "lightning" ? "Lightning ⚡" : t === "audit" ? "Audit (Boss)" : "Standard";
+    dom.end.review.innerHTML = state.history.map(h => `
+      <div class="review-row" style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border-soft);">
+        <div style="font-size:12px; color:var(--text-secondary)">Round ${h.round} • +${h.pts} pts</div>
+        <div><strong>Scenario:</strong> ${escapeHtml(h.scenario.text)}</div>
+        <div><strong>Correct Card:</strong> ${findCard(h.scenario.expected.match).name}</div>
+      </div>
+    `).join("");
   }
 
   // ---------- AI ----------
   function aiPickCard(scenario) {
-    const correctId = scenario.expected.match;
-    const correct = findCard(correctId);
-    const distractors = D.CONCEPT_CARDS.filter(c => c.id !== correctId);
-    // 70% chance correct
+    const correct = findCard(scenario.expected.match);
     if (Math.random() < 0.7) return correct;
-    // Pick a plausible distractor: same family if possible
-    const sameFamily = distractors.filter(c => c.family === correct.family);
-    const pool = sameFamily.length ? sameFamily : distractors;
+    const pool = D.CONCEPT_CARDS.filter(c => c.id !== correct.id);
     return pool[Math.floor(Math.random() * pool.length)];
   }
-
   function aiPickRationale(scenario) {
-    const correctId = scenario.rationale.correct_id;
-    if (Math.random() < 0.6) return correctId;
-    const wrong = scenario.rationale.options.filter(o => o.id !== correctId);
-    return wrong[Math.floor(Math.random() * wrong.length)].id;
+    if (Math.random() < 0.6) return scenario.rationale.correct_id;
+    return scenario.rationale.options[0].id;
   }
-
   function aiPickQuality(scenario) {
-    const correctId = scenario.expected.quality;
-    if (Math.random() < 0.5) return correctId;
-    const wrong = D.QUALITIES.filter(q => q.id !== correctId);
-    return wrong[Math.floor(Math.random() * wrong.length)].id;
+    if (Math.random() < 0.5) return scenario.expected.quality;
+    return D.QUALITIES[0].id;
   }
 
-  // ---------- Misc ----------
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  // ---------- Boot ----------
   function boot() {
     renderRules();
     bindLobby();
