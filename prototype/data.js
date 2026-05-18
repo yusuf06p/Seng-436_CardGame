@@ -295,6 +295,251 @@
       explanation:
         "Three concepts collide: a runtime malfunction (Failure) was observed during Validation (acceptance testing), and the underlying Defect was missed by Static testing (the walkthrough). Quality-wise it is mainly a Compatibility issue, with a strong Usability flavour.",
       round_type: "audit"
+    },
+    {
+      id: "S16",
+      text: "A team runs an automated static analysis tool overnight. The tool flags several SQL injection vulnerabilities in the newly committed code.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Static testing) - yenisorular (Static Analysis Tools)",
+      expected: { match: "static", quality: "security" },
+      rationale: {
+        correct_id: "r1",
+        options: [
+          { id: "r1", text: "The tool inspects the code without executing it." },
+          { id: "r2", text: "The code is being executed to find vulnerabilities." },
+          { id: "r3", text: "It is checking if the product meets user business needs." }
+        ]
+      },
+      explanation: "Static analysis tools examine source code for issues without running the code. Security vulnerabilities found this way are Defects caught via Static Testing.",
+      round_type: "standard"
+    },
+    {
+      id: "S17",
+      text: "During User Acceptance Testing (UAT), stakeholders realize the new risk management dashboard is too cluttered and difficult to navigate, even though it meets the specification.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Validation) - yenisorular (Stakeholder Involvement)",
+      expected: { match: "validation", quality: "usability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "The system failed to meet internal architectural guidelines." },
+          { id: "r2", text: "It fails to meet the actual needs and expectations of the user." },
+          { id: "r3", text: "It is a static flaw in the codebase." }
+        ]
+      },
+      explanation: "Even if the spec was followed, UAT is about Validation—ensuring the right product was built for the user. A cluttered UI is a Usability issue.",
+      round_type: "standard"
+    },
+    {
+      id: "S18",
+      text: "A tester misinterprets the risk prioritization matrix and focuses all automated tests on low-priority modules instead of the payment gateway.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Error) - yenisorular (Risk Prioritization)",
+      expected: { match: "error", quality: "functional_suitability" },
+      rationale: {
+        correct_id: "r3",
+        options: [
+          { id: "r1", text: "It is a runtime malfunction in the payment gateway." },
+          { id: "r2", text: "It is a flaw embedded in the application code." },
+          { id: "r3", text: "It is a human action (misinterpretation) that leads to an incorrect outcome." }
+        ]
+      },
+      explanation: "The tester's misunderstanding is an Error. It hasn't caused a software crash yet, but this human mistake will lead to ineffective testing.",
+      round_type: "standard"
+    },
+    {
+      id: "S19",
+      text: "An automated CI/CD pipeline executes the regression test suite after a new deployment. Several tests related to user login fail.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Dynamic testing) - yenisorular (Continuous Testing)",
+      expected: { match: "dynamic", quality: "reliability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "The pipeline is statically analyzing the code." },
+          { id: "r2", text: "The system is being executed to verify its behavior." },
+          { id: "r3", text: "It is a human mistake made during deployment." }
+        ]
+      },
+      explanation: "Running automated tests means the code is being executed. This is Dynamic testing. Regression tests primarily ensure Reliability (the system continues to function).",
+      round_type: "lightning"
+    },
+    {
+      id: "S20",
+      text: "A security expert reviews the architecture document and notices that data encryption in transit is missing from the design.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Defect) & § 6 (Static testing)",
+      expected: { match: "defect", quality: "security" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "It is an observable malfunction during a network request." },
+          { id: "r2", text: "It is a static flaw residing in a work product (design doc)." },
+          { id: "r3", text: "It is checking the software against actual user needs." }
+        ]
+      },
+      explanation: "A missing requirement in a design document is a Defect. It was found via Static testing (reviewing the document).",
+      round_type: "standard"
+    },
+    {
+      id: "S21",
+      text: "During a risk assessment workshop, a stakeholder points out that the proposed backup strategy contradicts the company's disaster recovery policy.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Verification) - yenisorular (Risk Assessment Workshops)",
+      expected: { match: "verification", quality: "reliability" },
+      rationale: {
+        correct_id: "r1",
+        options: [
+          { id: "r1", text: "It is checking a work product against a specified policy/rule." },
+          { id: "r2", text: "It is observing the system fail to recover from a disaster." },
+          { id: "r3", text: "It is dynamic testing of the backup system." }
+        ]
+      },
+      explanation: "Checking a proposed strategy against an existing policy is Verification (are we building it right according to the rules?).",
+      round_type: "standard"
+    },
+    {
+      id: "S22",
+      text: "In production, the application crashes and displays a stack trace to the end-user when they upload a corrupted image file.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Failure) - quality: Reliability/Security",
+      expected: { match: "failure", quality: "reliability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "It is a flaw in the code that hasn't been executed." },
+          { id: "r2", text: "It is an observable malfunction happening while the system runs." },
+          { id: "r3", text: "It is a human mistake made by the user." }
+        ]
+      },
+      explanation: "An application crashing in production is a Failure. The system is running, and the malfunction is dynamically observed by the user.",
+      round_type: "lightning"
+    },
+    {
+      id: "S23",
+      text: "A peer review of a test script reveals that it asserts the wrong expected value due to a copy-paste mistake by the developer.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Defect) - yenisorular (Peer Reviews)",
+      expected: { match: "defect", quality: "maintainability" },
+      rationale: {
+        correct_id: "r1",
+        options: [
+          { id: "r1", text: "It is a static flaw inside the test script artefact." },
+          { id: "r2", text: "The test script caused the system to crash." },
+          { id: "r3", text: "It is evaluating the product against user needs." }
+        ]
+      },
+      explanation: "The copy-paste mistake is embedded in the script. It's a Defect in the testware. Peer review is a Static testing approach.",
+      round_type: "standard"
+    },
+    {
+      id: "S24",
+      text: "An automated script uses a headless browser to click through the checkout process and verifies that the total price updates correctly.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Dynamic testing)",
+      expected: { match: "dynamic", quality: "functional_suitability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "The script is statically analyzing the HTML structure." },
+          { id: "r2", text: "The script is executing the application and observing its behavior." },
+          { id: "r3", text: "It is a human error during manual testing." }
+        ]
+      },
+      explanation: "Using a headless browser to interact with the application and check functionality is Dynamic testing.",
+      round_type: "lightning"
+    },
+    {
+      id: "S25",
+      text: "A project manager allocates only one week for performance testing, failing to realize that the risk register categorized performance as 'Critical Risk'.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Error) - yenisorular (Resource Assessment Challenge)",
+      expected: { match: "error", quality: "performance_efficiency" },
+      rationale: {
+        correct_id: "r3",
+        options: [
+          { id: "r1", text: "It is a static flaw in the application code." },
+          { id: "r2", text: "It is an observable runtime failure of the server." },
+          { id: "r3", text: "It is a human mistake in planning that will impact quality." }
+        ]
+      },
+      explanation: "A bad planning decision is a human Error. It hasn't manifested as a Defect in the software yet, but it creates high risk.",
+      round_type: "standard"
+    },
+    {
+      id: "S26",
+      text: "A mobile application works perfectly on iOS, but UI elements overlap and become unclickable on various Android tablets.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Failure) - quality: Compatibility",
+      expected: { match: "failure", quality: "compatibility" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "It is a static design flaw found in the wireframes." },
+          { id: "r2", text: "The system is executing and behaving incorrectly in a specific environment." },
+          { id: "r3", text: "It is a failure to meet internal code standards." }
+        ]
+      },
+      explanation: "The app is running and failing visually. This observable runtime issue is a Failure, specifically relating to Compatibility across devices.",
+      round_type: "lightning"
+    },
+    {
+      id: "S27",
+      text: "An architect inspects an API integration plan to ensure it strictly follows the REST constraints defined in the company's technical guidelines.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 6 (Verification)",
+      expected: { match: "verification", quality: "maintainability" },
+      rationale: {
+        correct_id: "r1",
+        options: [
+          { id: "r1", text: "It checks conformance to an internal specification/guideline." },
+          { id: "r2", text: "It checks if the user will actually like the API." },
+          { id: "r3", text: "The API is being executed and tested." }
+        ]
+      },
+      explanation: "Checking a plan against technical guidelines without executing code is Verification and Static Testing.",
+      round_type: "standard"
+    },
+    {
+      id: "S28",
+      text: "A team integrates their test automation suite into the CI/CD pipeline, but false positives occur constantly because the test database is not reset between runs.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Defect) - yenisorular (Test Environment Setup Challenge)",
+      expected: { match: "defect", quality: "reliability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "It is a human mistake that hasn't affected anything yet." },
+          { id: "r2", text: "It is a static flaw in the test environment configuration." },
+          { id: "r3", text: "It is validation against user needs." }
+        ]
+      },
+      explanation: "A bad configuration in the test environment/pipeline is a Defect in the testware. It causes the dynamic tests to fail falsely.",
+      round_type: "standard"
+    },
+    {
+      id: "S29",
+      text: "The lead developer writes a complex algorithm but forgets to handle null inputs. The code is merged into the main branch.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 (Defect)",
+      expected: { match: "defect", quality: "reliability" },
+      rationale: {
+        correct_id: "r2",
+        options: [
+          { id: "r1", text: "It is a runtime failure happening in production." },
+          { id: "r2", text: "It is a static flaw now living inside the codebase." },
+          { id: "r3", text: "It is a pure human thought process with no code written yet." }
+        ]
+      },
+      explanation: "Forgetting to handle nulls is the Error. Once merged into the code, it becomes a Defect. It will become a Failure if executed with a null input.",
+      round_type: "standard"
+    },
+    {
+      id: "S30",
+      text: "A critical bug is found in production. Investigation reveals the test environment was misconfigured, causing automated dynamic tests to pass falsely. The underlying code flaw was never caught.",
+      clause_ref: "ISO/IEC 29119-1:2022 § 5 & 6 (multi-concept)",
+      expected: {
+        match: "failure",
+        quality: "reliability",
+        also_qualities: ["maintainability", "functional_suitability"],
+        also_concepts: ["dynamic", "defect", "error"]
+      },
+      rationale: {
+        correct_id: "r3",
+        options: [
+          { id: "r1", text: "It is purely an Error made by a human." },
+          { id: "r2", text: "It is a Static testing failure." },
+          { id: "r3", text: "A Failure in production traceable to a Defect in the test environment that broke Dynamic testing." }
+        ]
+      },
+      explanation: "This Audit round combines concepts: A production Failure caused by a Defect in the code, which was missed because of another Defect in the test environment, undermining the Dynamic testing.",
+      round_type: "audit"
     }
   ];
 

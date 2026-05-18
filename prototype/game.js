@@ -93,6 +93,8 @@
     revealHandle: null,
     resolveHandle: null,
     match: { locked: false, deadline: 0 },
+    isSpectator: false,
+    customRoundPlan: null,
     defend: { locked: false, deadline: 0 }
   };
 
@@ -214,6 +216,7 @@
     dom.lobby.mainControls.hidden = false;
     dom.lobby.multiSetup.hidden = true;
     dom.lobby.waitingRoom.hidden = true;
+    document.getElementById("host-settings").style.display = "none";
   }
 
   function getPlayerName() {
@@ -229,7 +232,7 @@
   }
 
   function initMultiplayerPlayer(id, name, isHost) {
-    state.network.players[id] = { id, name, score: 0, isHost, matchPick: null, rationale: null, quality: null, ready: false };
+    state.network.players[id] = { id, name, score: 0, isHost, matchPick: null, rationale: null, quality: null, ready: false, isSpectator: false };
   }
 
   function createRoom() {
@@ -240,6 +243,7 @@
     
     dom.lobby.multiSetup.hidden = true;
     dom.lobby.waitingRoom.hidden = false;
+    document.getElementById("host-settings").style.display = "block";
     dom.lobby.displayRoomCode.textContent = roomId;
     dom.lobby.waitingStatus.textContent = "Creating room...";
     dom.lobby.btnStartMulti.hidden = true;
@@ -271,6 +275,7 @@
 
     dom.lobby.multiSetup.hidden = true;
     dom.lobby.waitingRoom.hidden = false;
+    document.getElementById("host-settings").style.display = "none";
     dom.lobby.displayRoomCode.textContent = code;
     dom.lobby.waitingStatus.textContent = "Connecting...";
     dom.lobby.btnStartMulti.hidden = true;
@@ -343,10 +348,14 @@
     } else if (data.type === 'START') {
       state.scenarioPool = data.pool;
       state.auditScenario = data.audit;
+      state.customRoundPlan = data.plan;
+      state.network.players = data.players;
+      state.isSpectator = state.network.players[state.myId]?.isSpectator || false;
       state.roundIndex = 0;
       state.history = [];
       dom.round.playerNameDisplay.textContent = getPlayerName();
       dom.round.stripOpponent.hidden = true; // hide AI in multi
+      document.getElementById("round-total").textContent = String(state.customRoundPlan.length);
       showScreen("round");
       enterReveal();
     } else if (data.type === 'ADVANCE') {
@@ -378,21 +387,41 @@
     dom.lobby.waitingPlayersList.innerHTML = html;
   }
 
+  function generateCustomPlan(roundCount) {
+    let plan = [];
+    const lightningCount = Math.floor(roundCount * 0.25); 
+    const standardCount = roundCount - lightningCount - 1; // 1 audit
+    for(let i=0; i<standardCount; i++) plan.push({ type: "standard", matchSec: 25, defendSec: 25, resolveSec: 6 });
+    for(let i=0; i<lightningCount; i++) plan.push({ type: "lightning", matchSec: 20, defendSec: 0, resolveSec: 5 });
+    plan = shuffle(plan);
+    plan.push({ type: "audit", matchSec: 30, defendSec: 35, resolveSec: 8 });
+    return plan;
+  }
+
   function hostStartGame() {
-    // Standard setup
-    const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard");
+    const roundCount = parseInt(document.getElementById("host-round-count").value, 10) || 15;
+    const isSpectator = document.getElementById("host-role").value === "spectator";
+    state.isSpectator = isSpectator;
+    if (state.network.players[state.myId]) {
+      state.network.players[state.myId].isSpectator = isSpectator;
+    }
+
+    state.customRoundPlan = generateCustomPlan(roundCount);
+
+    const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard" || s.round_type === "lightning");
     state.scenarioPool = shuffle(standardPool);
-    state.auditScenario = D.SCENARIOS.find(s => s.round_type === "audit");
+    const audits = shuffle(D.SCENARIOS.filter(s => s.round_type === "audit"));
+    state.auditScenario = audits[0];
     state.roundIndex = 0;
     state.history = [];
     
-    // reset scores
     Object.values(state.network.players).forEach(p => p.score = 0);
 
-    broadcast({ type: 'START', pool: state.scenarioPool, audit: state.auditScenario });
+    broadcast({ type: 'START', pool: state.scenarioPool, audit: state.auditScenario, plan: state.customRoundPlan, players: state.network.players });
     
     dom.round.playerNameDisplay.textContent = getPlayerName();
-    dom.round.stripOpponent.hidden = true; // hide AI
+    dom.round.stripOpponent.hidden = true; 
+    document.getElementById("round-total").textContent = String(roundCount);
     showScreen("round");
     enterReveal();
   }
@@ -403,24 +432,29 @@
     state.myId = "p1";
     state.network.isHost = true;
     state.network.players = {
-      "p1": { id: "p1", name: getPlayerName(), score: 0, ready: false },
-      "ai": { id: "ai", name: "AI Auditor", score: 0, ready: false }
+      "p1": { id: "p1", name: getPlayerName(), score: 0, ready: false, isSpectator: false },
+      "ai": { id: "ai", name: "AI Auditor", score: 0, ready: false, isSpectator: false }
     };
-    const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard");
+    const roundCount = parseInt(document.getElementById("single-round-count").value, 10) || 15;
+    state.customRoundPlan = generateCustomPlan(roundCount);
+    state.isSpectator = false;
+    const standardPool = D.SCENARIOS.filter(s => s.round_type === "standard" || s.round_type === "lightning");
     state.scenarioPool = shuffle(standardPool);
-    state.auditScenario = D.SCENARIOS.find(s => s.round_type === "audit");
+    const audits = shuffle(D.SCENARIOS.filter(s => s.round_type === "audit"));
+    state.auditScenario = audits[0];
     state.roundIndex = 0;
     state.history = [];
     
     dom.round.playerNameDisplay.textContent = getPlayerName();
     dom.round.stripOpponent.hidden = false;
+    document.getElementById("round-total").textContent = String(state.customRoundPlan.length);
     showScreen("round");
     enterReveal();
   }
 
   // ---------- Round Flow ----------
   function pickScenarioForRound(idx) {
-    state.currentRoundPlan = D.ROUND_PLAN[idx];
+    state.currentRoundPlan = state.customRoundPlan ? state.customRoundPlan[idx] : D.ROUND_PLAN[idx];
     if (state.currentRoundPlan.type === "audit") return state.auditScenario;
     return state.scenarioPool[idx % state.scenarioPool.length];
   }
@@ -460,7 +494,14 @@
     setPhaseDot("match");
     dom.round.lightningNotice.hidden = (t !== "lightning");
 
-    renderHand({ disabled: true });
+    if (state.isSpectator) {
+      document.getElementById("hand-wrap").style.display = "none";
+      document.getElementById("strip-player").style.display = "none";
+    } else {
+      document.getElementById("hand-wrap").style.display = "block";
+      document.getElementById("strip-player").style.display = "flex";
+      renderHand({ disabled: true });
+    }
     updateScores();
 
     if (state.mode === 'single' || state.mode === 'multi') {
@@ -472,7 +513,14 @@
     state.phase = "match";
     setPhaseDot("match");
     dom.round.lightningNotice.hidden = true;
-    renderHand({ disabled: false });
+    
+    if (state.isSpectator) {
+      document.getElementById("hand-label").textContent = "Waiting for players to lock in...";
+      document.getElementById("hand-wrap").style.display = "block";
+      dom.round.hand.innerHTML = "";
+    } else {
+      renderHand({ disabled: false });
+    }
 
     if (state.mode === 'single' || state.network.isHost) {
       const ms = state.currentRoundPlan.matchSec * 1000;
@@ -490,7 +538,7 @@
   let advanceTimeout = null;
   function checkPhaseAdvance() {
     if (!state.network.isHost && state.mode !== 'single') return;
-    const allReady = Object.values(state.network.players).every(p => p.ready);
+    const allReady = Object.values(state.network.players).filter(p => !p.isSpectator).every(p => p.ready);
     if (allReady && !advanceTimeout) {
        clearTimers();
        // slight delay for visual UX
@@ -528,14 +576,19 @@
     state.phase = "defend";
     setPhaseDot("defend");
     
-    const myP = state.network.players[state.myId];
-    renderHand({ disabled: true, lockedId: myP.matchPick });
+    if (state.isSpectator) {
+      document.getElementById("hand-label").textContent = "Waiting for players to defend...";
+      document.getElementById("hand-wrap").style.display = "block";
+    } else {
+      const myP = state.network.players[state.myId];
+      renderHand({ disabled: true, lockedId: myP.matchPick });
 
-    dom.round.defendPanel.hidden = false;
-    renderRationaleChips();
-    renderQualityChips();
-    dom.round.defendSubmit.disabled = true;
-    dom.round.defendSubmit.onclick = onDefendSubmit;
+      dom.round.defendPanel.hidden = false;
+      renderRationaleChips();
+      renderQualityChips();
+      dom.round.defendSubmit.disabled = true;
+      dom.round.defendSubmit.onclick = onDefendSubmit;
+    }
 
     if (state.mode === 'single' || state.network.isHost) {
       const ms = state.currentRoundPlan.defendSec * 1000;
@@ -573,9 +626,8 @@
     updateTimerUI(0, 1);
     dom.round.timerText.textContent = "✓";
 
-    // In singleplayer, calc scores here if not done
-    if (state.mode === 'single') {
-      scoreRound();
+    if (state.isSpectator) {
+      document.getElementById("hand-wrap").style.display = "none";
     }
 
     renderResolve();
@@ -590,7 +642,8 @@
         continueBtn.onclick = () => {
           clearTimers();
           state.roundIndex += 1;
-          if (state.roundIndex >= D.ROUND_PLAN.length) {
+          const totalR = state.customRoundPlan ? state.customRoundPlan.length : D.ROUND_PLAN.length;
+          if (state.roundIndex >= totalR) {
             broadcast({ type: 'ADVANCE', phase: 'end' });
             enterEnd();
           } else {
@@ -608,21 +661,42 @@
     clearTimers();
     state.phase = "end";
     
-    const myScore = state.network.players[state.myId].score;
-    const allScores = Object.values(state.network.players).sort((a,b) => b.score - a.score);
-    const topScore = allScores[0].score;
+    const allScores = Object.values(state.network.players).filter(p => !p.isSpectator).sort((a,b) => b.score - a.score);
+    const topScore = allScores.length ? allScores[0].score : 0;
     
     let banner, klass;
-    if (myScore === topScore) {
-      banner = "You Win!"; klass = "is-win";
+    if (state.isSpectator) {
+      banner = "Game Finished"; klass = "is-mixed";
     } else {
-      banner = "Game Over"; klass = "is-lose";
+      const myScore = state.network.players[state.myId] ? state.network.players[state.myId].score : 0;
+      if (myScore === topScore) {
+        banner = "You Win!"; klass = "is-win";
+      } else {
+        banner = "Game Over"; klass = "is-lose";
+      }
     }
     
     dom.end.banner.textContent = banner;
     dom.end.banner.className = "end-banner " + klass;
     dom.end.subline.textContent = state.mode === 'single' ? "Review your results." : "Multiplayer results";
     
+    // Apply inline styles to force centering (immune to CSS caching issues)
+    dom.end.leaderboard.style.display = "flex";
+    dom.end.leaderboard.style.flexDirection = "column";
+    dom.end.leaderboard.style.gap = "8px";
+    dom.end.leaderboard.style.margin = "0 auto 24px auto";
+    dom.end.leaderboard.style.maxWidth = "400px";
+
+    dom.end.review.style.display = "flex";
+    dom.end.review.style.flexDirection = "column";
+    dom.end.review.style.gap = "8px";
+    dom.end.review.style.margin = "0 auto 22px auto";
+    dom.end.review.style.maxWidth = "500px";
+    dom.end.review.style.textAlign = "left";
+
+    const heading = document.querySelector(".end-review-heading");
+    if (heading) heading.style.textAlign = "center";
+
     // Render leaderboard
     let html = "";
     allScores.forEach((p, i) => {
@@ -755,6 +829,7 @@
     const s = D.SCORING;
 
     Object.values(state.network.players).forEach(p => {
+      if (p.isSpectator) return;
       let pts = 0;
       const mOk = p.matchPick === sc.expected.match;
       const rOk = p.rationale === sc.rationale.correct_id;
@@ -781,13 +856,15 @@
     });
     
     // Save to history for my player
-    const myP = state.network.players[state.myId];
-    state.history.push({
-      round: state.roundIndex + 1,
-      scenario: sc,
-      pick: myP.matchPick,
-      pts: myP.lastResult.points
-    });
+    if (!state.isSpectator) {
+      const myP = state.network.players[state.myId];
+      state.history.push({
+        round: state.roundIndex + 1,
+        scenario: sc,
+        pick: myP.matchPick,
+        pts: myP.lastResult.points
+      });
+    }
   }
 
   function renderResolve() {
@@ -797,69 +874,68 @@
     const correctQuality = findQuality(sc.expected.quality);
 
     const myP = state.network.players[state.myId];
-    const res = myP.lastResult || {};
+    const res = (myP && !state.isSpectator) ? (myP.lastResult || {}) : {};
     const isLightning = state.currentRoundPlan.type === "lightning";
 
     let headlineClass = "is-mixed", headlineText = "Round Over";
-    if (!res.matchOk) { headlineClass = "is-lose"; headlineText = "Wrong card."; }
+    if (state.isSpectator) { headlineClass = "is-mixed"; headlineText = "Round Results"; }
+    else if (!res.matchOk) { headlineClass = "is-lose"; headlineText = "Wrong card."; }
     else if (isLightning) { headlineClass = "is-win"; headlineText = "Correct!"; }
     else if (res.reasonOk && res.qualityOk) { headlineClass = "is-win"; headlineText = "Perfect defence!"; }
 
-    const playerCardName = myP.matchPick ? findCard(myP.matchPick).name : "—";
+    const playerCardName = (myP && !state.isSpectator && myP.matchPick) ? findCard(myP.matchPick).name : "—";
     const explanation  = sc.explanation || D.REMINDERS[sc.expected.match] || "";
 
     const reasonRow = isLightning ? "" : `
       <div class="resolve-row">
         <div class="label">REASON</div>
-        <div class="value-mark ${res.reasonOk ? "is-correct" : "is-wrong"}">
+        ${state.isSpectator ? "" : `<div class="value-mark ${res.reasonOk ? "is-correct" : "is-wrong"}">
           ${res.reasonOk ? "✓" : "✗"}
-        </div>
+        </div>`}
         <div>correct: ${escapeHtml(correctReason.text)}</div>
       </div>
       <div class="resolve-row">
         <div class="label">25010 TAG</div>
-        <div class="value-mark ${res.qualityOk ? "is-correct" : "is-wrong"}">
+        ${state.isSpectator ? "" : `<div class="value-mark ${res.qualityOk ? "is-correct" : "is-wrong"}">
           ${res.qualityOk ? "✓" : "✗"}
-        </div>
+        </div>`}
         <div>correct: ${escapeHtml(correctQuality.name)}</div>
       </div>
     `;
 
-    // Multi results string
-    let multiStr = "";
-    if (state.mode === 'multi') {
-       const sorted = Object.values(state.network.players).sort((a,b) => b.score - a.score);
-       multiStr = `<div style="margin-top: 15px;"><strong>Live Leaderboard</strong></div>` + 
-         sorted.map((p, i) => `
-         <div style="display:flex; justify-content:space-between; margin-top:4px; padding:6px 10px; background:var(--bg-mid); border: 1px solid var(--border-soft); border-radius:4px; ${p.id === state.myId ? 'border-color:var(--accent-gold);' : ''}">
-           <span>${i+1}. ${escapeHtml(p.name)}</span>
-           <span><strong>${p.score} pts</strong> <span style="color:var(--success)">(+${p.lastResult.points})</span></span>
-         </div>
-       `).join("");
-    } else {
-       const ai = state.network.players['ai'];
-       multiStr = `AI Auditor: +${ai.lastResult.points} (played ${ai.matchPick ? findCard(ai.matchPick).name : '-'})`;
-    }
+    // Live Leaderboard string
+    const sorted = Object.values(state.network.players).sort((a,b) => b.score - a.score);
+    let multiStr = `<div style="margin-top: 15px; margin-bottom: 8px;"><strong>Live Leaderboard</strong></div>` + 
+      sorted.map((p, i) => {
+        const lastPts = p.lastResult ? (p.lastResult.points || 0) : 0;
+        const playedStr = (p.id === 'ai' && p.matchPick) ? ` <span style="font-size:11px; color:var(--text-secondary);">(${findCard(p.matchPick).name})</span>` : '';
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; padding:6px 10px; background:var(--bg-mid); border: 1px solid var(--border-soft); border-radius:4px; ${p.id === state.myId ? 'border-color:var(--accent-gold);' : ''}">
+            <span>${i+1}. ${escapeHtml(p.name)}${playedStr}</span>
+            <span><strong>${p.score} pts</strong> <span style="color:var(--success)">(+${lastPts})</span></span>
+          </div>
+        `;
+      }).join("");
 
     dom.round.resolveCard.innerHTML = `
       <div class="resolve-headline ${headlineClass}">${headlineText}</div>
       <div class="resolve-rows">
         <div class="resolve-row">
           <div class="label">CARD</div>
-          <div class="value-mark ${res.matchOk ? "is-correct" : "is-wrong"}">
+          ${state.isSpectator ? "" : `<div class="value-mark ${res.matchOk ? "is-correct" : "is-wrong"}">
             ${res.matchOk ? "✓" : "✗"} you: ${escapeHtml(playerCardName)}
-          </div>
+          </div>`}
           <div>correct: ${escapeHtml(correctCard.name)}</div>
         </div>
         ${reasonRow}
       </div>
       <div class="resolve-explanation">${escapeHtml(explanation)}</div>
       <div class="resolve-points" style="font-size:14px; color:var(--text-secondary); margin-top:10px;">
-        <strong style="color:var(--success)">You: +${res.points} pts</strong><br>
+        ${state.isSpectator ? "" : `<strong style="color:var(--success)">You: +${res.points || 0} pts</strong><br>`}
         ${multiStr}
       </div>
       <button id="resolve-continue" class="btn btn-primary resolve-continue-btn" type="button">
-        ${state.roundIndex + 1 >= D.ROUND_PLAN.length ? "See Results" : "Next Round →"}
+        ${state.roundIndex + 1 >= (state.customRoundPlan ? state.customRoundPlan.length : D.ROUND_PLAN.length) ? "See Results" : "Next Round →"}
       </button>
     `;
   }

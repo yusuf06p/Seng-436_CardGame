@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ISO TESTIT! — Learn ISO/IEC 29119-1 by playing</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=1.1" />
 </head>
 <body>
   <!-- Persistent rules toggle (visible everywhere) -->
@@ -68,6 +68,18 @@
 
         <div class="lobby-controls" id="lobby-main-controls">
           <input id="player-name" class="lobby-input-new" type="text" maxlength="20" placeholder="Enter your name (Optional)" autocomplete="off" />
+          
+          <div id="singleplayer-settings" style="margin: 15px 0; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+            <label for="single-round-count" style="color: white; font-size: 14px; margin-right: 10px;">Rounds (Single Player):</label>
+            <select id="single-round-count" class="lobby-input-new" style="width: auto; display: inline-block; padding: 5px;">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="20">20</option>
+              <option value="25">25</option>
+              <option value="30">30</option>
+            </select>
+          </div>
           <div class="lobby-buttons">
             <button id="btn-singleplayer" class="btn-new btn-start" type="button">SINGLE PLAYER</button>
             <button id="btn-multiplayer" class="btn-new btn-multi" type="button">MULTIPLAYER</button>
@@ -93,6 +105,28 @@
             <!-- players populated here -->
           </div>
           <p class="tagline-new" id="waiting-status" style="margin: 10px 0;">Waiting for players...</p>
+          
+          <div id="host-settings" style="margin-bottom: 15px; display: none; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+            <div style="margin-bottom: 10px;">
+              <label for="host-round-count" style="color: white; font-size: 14px; margin-right: 10px;">Total Rounds:</label>
+              <select id="host-round-count" class="lobby-input-new" style="width: auto; display: inline-block; padding: 5px;">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+                <option value="20">20</option>
+                <option value="25">25</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+            <div>
+              <label for="host-role" style="color: white; font-size: 14px; margin-right: 10px;">Your Role:</label>
+              <select id="host-role" class="lobby-input-new" style="width: auto; display: inline-block; padding: 5px;">
+                <option value="player" selected>Play as Participant</option>
+                <option value="spectator">Spectator / Game Master</option>
+              </select>
+            </div>
+          </div>
+
           <div class="lobby-buttons">
             <button id="btn-start-multi-game" class="btn-new btn-start" type="button" hidden>START GAME</button>
             <button id="btn-leave-room" class="btn-new btn-rules" type="button">LEAVE ROOM</button>
@@ -113,7 +147,7 @@
         </div>
 
         <div class="round-meta">
-          <div class="round-counter">Round <span id="round-counter">1</span> / 15</div>
+          <div class="round-counter">Round <span id="round-counter">1</span> / <span id="round-total">15</span></div>
           <div class="round-type" id="round-type-label">Standard</div>
         </div>
 
@@ -158,8 +192,8 @@
         </div>
 
         <!-- Player hand -->
-        <div class="hand-wrap">
-          <div class="hand-label">Your hand · play one card</div>
+        <div class="hand-wrap" id="hand-wrap">
+          <div class="hand-label" id="hand-label">Your hand · play one card</div>
           <div class="hand" id="hand"></div>
         </div>
 
@@ -206,6 +240,6 @@
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <!-- Data first (sets window.GAME_DATA), then game logic -->
   <script src="data.js"></script>
-  <script src="game.js"></script>
+  <script src="game.js?v=1.1"></script>
 </body>
 </html>
