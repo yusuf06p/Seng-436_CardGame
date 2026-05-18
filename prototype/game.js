@@ -235,6 +235,15 @@
     state.network.players[id] = { id, name, score: 0, isHost, matchPick: null, rationale: null, quality: null, ready: false, isSpectator: false };
   }
 
+  const peerConfig = {
+    config: {
+      'iceServers': [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' }
+      ]
+    }
+  };
+
   function createRoom() {
     const roomId = genRoomId();
     state.network.isHost = true;
@@ -248,7 +257,7 @@
     dom.lobby.waitingStatus.textContent = "Creating room...";
     dom.lobby.btnStartMulti.hidden = true;
 
-    state.network.peer = new Peer(PEER_PREFIX + roomId);
+    state.network.peer = new Peer(PEER_PREFIX + roomId, peerConfig);
     state.network.peer.on('open', (id) => {
       dom.lobby.waitingStatus.textContent = "Waiting for players...";
       dom.lobby.btnStartMulti.hidden = false;
@@ -283,7 +292,7 @@
     state.network.isHost = false;
     state.network.roomId = code;
     
-    state.network.peer = new Peer();
+    state.network.peer = new Peer(undefined, peerConfig);
     state.network.peer.on('open', (id) => {
       state.myId = id;
       const conn = state.network.peer.connect(PEER_PREFIX + code);
@@ -354,7 +363,6 @@
       state.roundIndex = 0;
       state.history = [];
       dom.round.playerNameDisplay.textContent = getPlayerName();
-      dom.round.stripOpponent.hidden = true; // hide AI in multi
       document.getElementById("round-total").textContent = String(state.customRoundPlan.length);
       showScreen("round");
       enterReveal();
@@ -420,7 +428,6 @@
     broadcast({ type: 'START', pool: state.scenarioPool, audit: state.auditScenario, plan: state.customRoundPlan, players: state.network.players });
     
     dom.round.playerNameDisplay.textContent = getPlayerName();
-    dom.round.stripOpponent.hidden = true; 
     document.getElementById("round-total").textContent = String(roundCount);
     showScreen("round");
     enterReveal();
@@ -717,7 +724,26 @@
   function updateScores() {
     dom.round.playerScore.textContent = String(state.network.players[state.myId]?.score || 0);
     if (state.mode === 'single') {
+       dom.round.stripOpponent.hidden = false;
        dom.round.opponentScore.textContent = String(state.network.players['ai']?.score || 0);
+       const opName = document.querySelector("#strip-opponent .player-name");
+       if (opName) opName.textContent = "AI Auditor";
+       const opAvatar = document.querySelector(".opponent-avatar");
+       if (opAvatar) opAvatar.textContent = "AI";
+    } else if (state.mode === 'multi') {
+       const others = Object.values(state.network.players)
+         .filter(p => p.id !== state.myId && !p.isSpectator)
+         .sort((a,b) => b.score - a.score);
+       if (others.length > 0) {
+         dom.round.stripOpponent.hidden = false;
+         dom.round.opponentScore.textContent = String(others[0].score || 0);
+         const opName = document.querySelector("#strip-opponent .player-name");
+         if (opName) opName.textContent = escapeHtml(others[0].name);
+         const opAvatar = document.querySelector(".opponent-avatar");
+         if (opAvatar) opAvatar.textContent = escapeHtml(others[0].name).substring(0,2).toUpperCase();
+       } else {
+         dom.round.stripOpponent.hidden = true;
+       }
     }
   }
 
