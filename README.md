@@ -1,6 +1,6 @@
 # ISO TESTIT! — Week 3 Prototype
 
-**Live Demo:** [https://yusuf06p.github.io/Seng-436_CardGame/prototype/index.html]
+**Live Demo:** https://yusuf06p.github.io/Seng-436_CardGame/prototype/index.html
 
 **Course:** SENG 436 — Software Quality Assurance
 **Team:** Import Math (Zeynep Nur Karabay, Mert Bursalıoğlu, Yusuf Ali Mertyürek)
